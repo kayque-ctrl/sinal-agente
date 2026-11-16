@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "sinal"
 version = "0.1.0"
 description = "Testes de regressão estatísticos para prompts de LLM: sinal vs. ruído."
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "litellm>=1.40",
