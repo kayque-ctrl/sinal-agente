@@ -28,6 +28,7 @@ from sinal.relatorio import mostrar_calibracao, mostrar_historico, mostrar_resul
 
 SAIDA_PIOROU = 1
 SAIDA_ERRO = 2
+RESPOSTAS_SIM = {"s", "sim", "y", "yes"}
 
 app = typer.Typer(
     help="Sinal: testes de regressão estatísticos para prompts (sinal vs. ruído).",
@@ -143,6 +144,45 @@ def _abrir_banco_existente(console: Console, cfg: Config) -> Armazenamento:
     if not cfg.caminhos.banco.exists():
         raise _falhar(console, "Nenhuma comparação ainda. Rode `sinal compara` primeiro.")
     return Armazenamento(cfg.caminhos.banco)
+
+
+@app.command()
+def agente(config: OpcaoConfig = Path(NOME_ARQUIVO_PADRAO)) -> None:
+    """Chat com um assistente que usa o Sinal pra te ajudar a iterar prompts."""
+    from rich.markdown import Markdown
+
+    from sinal.agente import Agente
+
+    console = _console()
+    cfg = _carregar_config(console, config)
+
+    def confirmar(mensagem: str) -> bool:
+        # Confirmação própria: o typer.confirm só aceita y/yes, e aqui a gente digita "s".
+        try:
+            resposta = console.input(f"[yellow]{mensagem}[/] [s/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return False
+        return resposta in RESPOSTAS_SIM
+
+    assistente = Agente(cfg, confirmar)
+    console.print(f"[bold]Agente do Sinal[/] (modelo: {cfg.modelos.agente}). Digite [bold]sair[/] pra encerrar.\n")
+    while True:
+        try:
+            pedido = console.input("[bold cyan]você>[/] ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if pedido.lower() in {"sair", "exit", "quit"}:
+            break
+        if not pedido:
+            continue
+        resposta = assistente.responder(
+            pedido, ao_usar_ferramenta=lambda c: console.print(f"[dim]  ↳ ferramenta: {c.nome}({c.argumentos_json})[/]")
+        )
+        console.print(Markdown(resposta))
+        console.print()
+    if assistente.custo_total_usd:
+        console.print(f"[dim]Custo do agente nesta sessão: US$ {assistente.custo_total_usd:.4f}[/]")
+    console.print("Até mais!")
 
 
 @app_calibra.command("exportar")

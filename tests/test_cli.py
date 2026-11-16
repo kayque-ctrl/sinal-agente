@@ -196,6 +196,49 @@ def test_calibra_erros_viram_mensagem(projeto):
     assert resultado.exit_code == SAIDA_ERRO and "Não achei" in resultado.output
 
 
+# --- agente -----------------------------------------------------------------
+
+
+def test_agente_no_terminal(projeto):
+    entrada = "liste os prompts\n\ncompare v1.txt com v2.txt\ns\nsair\n"  # linha vazia é ignorada; "s" confirma
+    resultado = runner.invoke(app, ["agente"], input=entrada)
+
+    assert resultado.exit_code == 0, resultado.output
+    assert "ferramenta: listar_prompts" in resultado.output
+    assert "Confirma?" in resultado.output
+    assert "MELHOROU" in resultado.output
+    assert "Até mais!" in resultado.output
+
+
+def test_agente_recusar_comparacao_e_fim_da_entrada(projeto):
+    resultado = runner.invoke(app, ["agente"], input="compare v1.txt com v2.txt\nn\n")  # termina sem "sair"
+    assert resultado.exit_code == 0
+    assert "cancelado" in resultado.output
+    assert not (projeto / ".sinal" / "sinal.db").exists()
+
+
+def test_agente_entrada_acaba_na_confirmacao_conta_como_nao(projeto):
+    resultado = runner.invoke(app, ["agente"], input="compare v1.txt com v2.txt\n")
+    assert resultado.exit_code == 0
+    assert "cancelado" in resultado.output
+
+
+def test_agente_mostra_custo_quando_houver(projeto, monkeypatch):
+    from sinal.agente import Agente
+
+    def responder_com_custo(self, texto, ao_usar_ferramenta=None):
+        self.custo_total_usd = 0.0123
+        return "ok"
+
+    monkeypatch.setattr(Agente, "responder", responder_com_custo)
+    resultado = runner.invoke(app, ["agente"], input="oi\nsair\n")
+    assert "US$ 0.0123" in resultado.output
+
+
+def test_agente_sem_config(pasta):
+    assert runner.invoke(app, ["agente"], input="sair\n").exit_code == SAIDA_ERRO
+
+
 # --- ajuda e python -m sinal ------------------------------------------------
 
 
