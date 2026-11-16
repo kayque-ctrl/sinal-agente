@@ -38,8 +38,8 @@ casos de teste → roda o prompt A e o B várias vezes → um juiz LLM dá nota 
 Requer Python 3.10+.
 
 ```bash
-git clone <url-do-repositório> sinal
-cd sinal
+git clone https://github.com/kayque-ctrl/sinal-agente.git
+cd sinal-agente
 pip install -e .
 ```
 
@@ -421,7 +421,7 @@ jobs:
           python-version: "3.12"
 
       - name: Instalar o Sinal
-        run: pip install "sinal @ git+https://github.com/<seu-usuario>/sinal"
+        run: pip install "sinal @ git+https://github.com/kayque-ctrl/sinal-agente.git"
 
       - name: Prompt da branch base (versão A)
         run: git show "origin/${{ github.base_ref }}:testes-prompt/prompts/vendedor.txt" > prompts/_base.txt
