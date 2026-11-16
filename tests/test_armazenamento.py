@@ -182,6 +182,18 @@ def test_filtro_nao_permite_sql_injection(banco):
     assert banco.ler_execucoes(comparacao_id, caso_id="x' OR '1'='1") == []
 
 
+def test_buscar_execucoes_por_ids(banco):
+    comparacao_id = nova_comparacao(banco)
+    banco.salvar_execucoes(comparacao_id, [Execucao("c1", "A", 1, nota=3), Execucao("c1", "B", 1, nota=5)])
+    ids = [e["id"] for e in banco.ler_execucoes(comparacao_id)]
+
+    encontradas = banco.buscar_execucoes([*ids, 999])
+
+    assert set(encontradas) == set(ids)  # o 999 não existe e simplesmente não volta
+    assert encontradas[ids[1]]["nota"] == 5
+    assert banco.buscar_execucoes([]) == {}
+
+
 def test_notas_por_caso_ignora_erros(banco):
     comparacao_id = nova_comparacao(banco)
     banco.salvar_execucoes(

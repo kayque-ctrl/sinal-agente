@@ -149,6 +149,53 @@ def test_historico_sem_config(pasta):
     assert runner.invoke(app, ["historico"]).exit_code == SAIDA_ERRO
 
 
+# --- calibra ----------------------------------------------------------------
+
+
+def test_calibra_exportar_e_avaliar(projeto):
+    import csv
+
+    runner.invoke(app, ["compara", "prompts/v1.txt", "prompts/v2.txt"])
+
+    exportado = runner.invoke(app, ["calibra", "exportar", "-n", "10", "-o", "cal.csv"])
+    assert exportado.exit_code == 0, exportado.output
+    assert "10 respostas exportadas" in exportado.output and "sinal calibra avaliar" in exportado.output
+
+    # "Você" preenche o CSV dando 3 pra tudo
+    caminho = projeto / "cal.csv"
+    with caminho.open(encoding="utf-8-sig", newline="") as arquivo:
+        linhas = list(csv.DictReader(arquivo, delimiter=";"))
+    for linha in linhas:
+        linha["nota_humana"] = "3"
+    with caminho.open("w", encoding="utf-8-sig", newline="") as arquivo:
+        escritor = csv.DictWriter(arquivo, fieldnames=list(linhas[0]), delimiter=";")
+        escritor.writeheader()
+        escritor.writerows(linhas)
+
+    avaliado = runner.invoke(app, ["calibra", "avaliar", "cal.csv"])
+    assert avaliado.exit_code == 0, avaliado.output
+    assert "kappa ponderado" in avaliado.output and "Matriz de confusão" in avaliado.output
+
+
+def test_calibra_exportar_caminho_padrao(projeto):
+    runner.invoke(app, ["compara", "prompts/v1.txt", "prompts/v2.txt"])
+    assert runner.invoke(app, ["calibra", "exportar"]).exit_code == 0
+    assert (projeto / ".sinal" / "calibracao" / "calibracao-ultima.csv").is_file()
+
+
+def test_calibra_sem_comparacoes(projeto):
+    resultado = runner.invoke(app, ["calibra", "exportar"])
+    assert resultado.exit_code == SAIDA_ERRO and "sinal compara" in resultado.output
+    assert runner.invoke(app, ["calibra", "avaliar", "x.csv"]).exit_code == SAIDA_ERRO
+
+
+def test_calibra_erros_viram_mensagem(projeto):
+    runner.invoke(app, ["compara", "prompts/v1.txt", "prompts/v2.txt"])
+    assert runner.invoke(app, ["calibra", "exportar", "--comparacao", "999"]).exit_code == SAIDA_ERRO
+    resultado = runner.invoke(app, ["calibra", "avaliar", "nao-existe.csv"])
+    assert resultado.exit_code == SAIDA_ERRO and "Não achei" in resultado.output
+
+
 # --- ajuda e python -m sinal ------------------------------------------------
 
 

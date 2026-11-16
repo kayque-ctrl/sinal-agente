@@ -284,6 +284,14 @@ class Armazenamento:
             parametros.append(limite)
         return self._ler(sql, parametros)
 
+    def buscar_execucoes(self, ids: list[int]) -> dict[int, dict[str, Any]]:
+        """Busca execuções pelos ids (de qualquer comparação). Devolve {id: execução}."""
+        if not ids:
+            return {}
+        marcadores = ", ".join("?" * len(ids))  # um "?" por id: os valores continuam separados do SQL
+        linhas = self._ler(f"SELECT * FROM execucoes WHERE id IN ({marcadores})", list(ids))
+        return {linha["id"]: linha for linha in linhas}
+
     def notas_por_caso(self, comparacao_id: int) -> dict[str, tuple[list[int], list[int]]]:
         """Notas válidas agrupadas: {caso_id: ([notas A], [notas B])}. Execuções com erro ficam de fora."""
         resultado: dict[str, tuple[list[int], list[int]]] = {}

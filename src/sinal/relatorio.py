@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -12,9 +13,10 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from sinal.calibracao import PARES_RECOMENDADOS, ResultadoCalibracao
 from sinal.comparador import ResultadoCaso, ResultadoComparacao
 from sinal.config import Estatistica
-from sinal.estatistica import Veredito
+from sinal.estatistica import NOTAS_POSSIVEIS, Veredito
 
 CORES = {
     Veredito.MELHOROU: "green",
@@ -179,6 +181,68 @@ def mostrar_historico(comparacoes: list[dict[str, Any]], console: Console) -> No
             str(c["total_execucoes"]),
             Text(str(c["total_erros"]), style="red" if c["total_erros"] else "dim"),
             f"{c['custo_total_usd']:.4f}",
+        )
+    console.print(tabela)
+
+
+def _cor_do_kappa(kappa: float) -> str:
+    if math.isnan(kappa) or kappa <= 0.4:
+        return "red"
+    return "green" if kappa > 0.6 else "yellow"
+
+
+def mostrar_calibracao(resultado: ResultadoCalibracao, console: Console) -> None:
+    cor = _cor_do_kappa(resultado.kappa)
+    kappa_texto = "indefinido" if math.isnan(resultado.kappa) else f"{resultado.kappa:.2f}"
+    linhas = [
+        Text(f"kappa ponderado: {kappa_texto} ({resultado.interpretacao})", style=f"bold {cor}"),
+        Text(
+            f"{resultado.pares} pares · notas iguais: {resultado.concordancia_exata:.0f}% · "
+            f"diferença de até 1 ponto: {resultado.concordancia_vizinha:.0f}%",
+            style="dim",
+        ),
+    ]
+    if resultado.ignoradas:
+        linhas.append(Text(f"{resultado.ignoradas} linha(s) sem nota humana foram ignoradas.", style="dim"))
+    if resultado.pares < PARES_RECOMENDADOS:
+        linhas.append(
+            Text(f"⚠ Só {resultado.pares} pares: o kappa ainda é instável. O ideal é {PARES_RECOMENDADOS} ou mais.",
+                 style="yellow")
+        )
+    console.print(Panel(Group(*linhas), title="Calibração do juiz", border_style=cor))
+
+    matriz = Table(
+        title="Matriz de confusão (linha = juiz, coluna = você)",
+        caption="Diagonal = concordância. Acima da diagonal, o juiz deu nota MAIOR que você.",
+        caption_justify="left",
+    )
+    matriz.add_column("")
+    for nota in NOTAS_POSSIVEIS:
+        matriz.add_column(f"você {nota}", justify="center")
+    for indice, linha in enumerate(resultado.matriz):
+        celulas = []
+        for coluna, quantidade in enumerate(linha):
+            estilo = "bold green" if coluna == indice and quantidade else ("" if quantidade else "dim")
+            celulas.append(Text(str(quantidade) if quantidade else ".", style=estilo))
+        matriz.add_row(f"juiz {NOTAS_POSSIVEIS[indice]}", *celulas)
+    console.print(matriz)
+
+    if not resultado.discordancias:
+        console.print("Nenhuma discordância: o juiz deu exatamente as mesmas notas que você.")
+        return
+    tabela = Table(title="Maiores discordâncias (material pra ajustar a rubrica ou o prompt do juiz)")
+    tabela.add_column("Execução", justify="right")
+    tabela.add_column("Caso")
+    tabela.add_column("Juiz × você", justify="center")
+    tabela.add_column("Resposta", max_width=50)
+    tabela.add_column("Justificativa do juiz", max_width=50)
+    for d in resultado.discordancias:
+        tabela.add_row(
+            str(d.id_execucao),
+            d.caso_id,
+            Text(f"{d.nota_juiz} × {d.nota_humana}", style="red" if d.distancia >= 2 else "yellow"),
+            d.resposta,
+            d.justificativa_juiz or "—",
         )
     console.print(tabela)
 

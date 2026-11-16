@@ -15,14 +15,16 @@ import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
+from sinal import calibracao
 from sinal.armazenamento import Armazenamento
+from sinal.calibracao import ErroCalibracao
 from sinal.casos import ErroCasos
 from sinal.comparador import ErroComparacao, comparar
 from sinal.config import NOME_ARQUIVO_PADRAO, Config, ErroConfig, carregar_config
 from sinal.estatistica import Veredito
 from sinal.exemplos import criar_projeto
 from sinal.juiz import ErroJuiz
-from sinal.relatorio import mostrar_historico, mostrar_resultado, salvar_json
+from sinal.relatorio import mostrar_calibracao, mostrar_historico, mostrar_resultado, salvar_json
 
 SAIDA_PIOROU = 1
 SAIDA_ERRO = 2
@@ -32,6 +34,9 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+app_calibra = typer.Typer(help="Calibração do juiz contra as suas notas (kappa ponderado).", no_args_is_help=True)
+app.add_typer(app_calibra, name="calibra")
 
 OpcaoConfig = Annotated[
     Path,
@@ -127,3 +132,60 @@ def historico(
         return
     with Armazenamento(cfg.caminhos.banco) as banco:
         mostrar_historico(banco.listar_comparacoes(limite), console)
+
+
+# ---------------------------------------------------------------------------
+# sinal calibra ...
+# ---------------------------------------------------------------------------
+
+
+def _abrir_banco_existente(console: Console, cfg: Config) -> Armazenamento:
+    if not cfg.caminhos.banco.exists():
+        raise _falhar(console, "Nenhuma comparação ainda. Rode `sinal compara` primeiro.")
+    return Armazenamento(cfg.caminhos.banco)
+
+
+@app_calibra.command("exportar")
+def calibra_exportar(
+    saida: Annotated[Optional[Path], typer.Option("--saida", "-o", help="Onde salvar o CSV.")] = None,
+    comparacao: Annotated[
+        Optional[int], typer.Option("--comparacao", help="ID da comparação (padrão: a última concluída).")
+    ] = None,
+    tamanho: Annotated[int, typer.Option("--tamanho", "-n", help="Quantas respostas exportar.")] = (
+        calibracao.PARES_RECOMENDADOS
+    ),
+    config: OpcaoConfig = Path(NOME_ARQUIVO_PADRAO),
+) -> None:
+    """Exporta respostas às cegas (sem a nota do juiz) pra você dar nota no Excel."""
+    console = _console()
+    cfg = _carregar_config(console, config)
+    with _abrir_banco_existente(console, cfg) as banco:
+        try:
+            pasta = cfg.caminhos.banco.parent / "calibracao"
+            destino = saida or pasta / f"calibracao-{comparacao or 'ultima'}.csv"
+            caminho, quantidade = calibracao.exportar(
+                banco, destino, comparacao_id=comparacao, tamanho=tamanho, semente=cfg.estatistica.semente
+            )
+        except ErroCalibracao as erro:
+            raise _falhar(console, str(erro)) from erro
+    console.print(f"[green]{quantidade} respostas exportadas[/] para [bold]{caminho}[/]")
+    console.print(
+        "Abra no Excel, preencha a coluna [bold]nota_humana[/] (1 a 5) seguindo a rubrica, salve "
+        f"e rode: [bold]sinal calibra avaliar {caminho}[/]"
+    )
+
+
+@app_calibra.command("avaliar")
+def calibra_avaliar(
+    arquivo: Annotated[Path, typer.Argument(help="CSV com a coluna nota_humana preenchida.")],
+    config: OpcaoConfig = Path(NOME_ARQUIVO_PADRAO),
+) -> None:
+    """Compara as suas notas com as do juiz: kappa, matriz de confusão e maiores discordâncias."""
+    console = _console()
+    cfg = _carregar_config(console, config)
+    with _abrir_banco_existente(console, cfg) as banco:
+        try:
+            resultado = calibracao.avaliar(banco, arquivo)
+        except ErroCalibracao as erro:
+            raise _falhar(console, str(erro)) from erro
+    mostrar_calibracao(resultado, console)
