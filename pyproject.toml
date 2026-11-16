@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sinal"
+version = "0.1.0"
+description = "Testes de regressão estatísticos para prompts de LLM: sinal vs. ruído."
+requires-python = ">=3.10"
+dependencies = [
+    "litellm>=1.40",
+    "typer>=0.12",
+    "rich>=13",
+    "numpy>=1.26",
+    "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+]
+
+[project.scripts]
+# O comando `sinal` no terminal chama o objeto `app` dentro de sinal/cli.py (criado na etapa 7).
+sinal = "sinal.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sinal"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# Só "test_..." é teste. O padrão do pytest ("test*") pegaria funções em português
+# como `teste_permutacao_pareado` e tentaria rodá-las como teste.
+python_functions = ["test_*"]
